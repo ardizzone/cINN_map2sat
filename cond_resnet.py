@@ -43,10 +43,10 @@ class ResNet18(nn.Module):
         self.layers = {}
         for i in range(self.res_lev):
             if i == 0:
-                self.layers['layer'+str(i)] = self._make_layer(block=BasicBlock, planes=self.ch, num_blocks=2, stride=1)
+                self.layers['layer'+str(i)] = self._make_layer(block=BasicBlock, planes=self.ch[i], num_blocks=2, stride=1)
             else:
-                self.layers['layer' + str(i)] = self._make_layer(block=BasicBlock, planes=(2**i)*self.ch, num_blocks=2,
-                                                                 stride=2)
+                self.layers['layer' + str(i)] = self._make_layer(block=BasicBlock, planes=self.ch[i], num_blocks=2, stride=2)
+
         # make resolution layers automatically depending on default/conf.ini
         self.resolution_levels = nn.ModuleList([self.layers['layer'+str(i)] for i in range(self.res_lev)])
 
