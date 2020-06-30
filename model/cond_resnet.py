@@ -32,30 +32,33 @@ class ResNet18(nn.Module):
     def __init__(self, args):
         super(ResNet18, self).__init__()
         self.ch = eval(args['model']['cond_net_channels'])
-        self.res_lev = len(eval(args['model']['inn_conditioning']))
+        self.res_lev = len(eval(args['model']['inn_coupling_blocks']))
         self.in_planes = self.ch
 
-        self.conv1 = nn.Conv2d(3, self.ch, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(self.ch)
+        self.conv1 = nn.Conv2d(3, self.ch[0], kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(self.ch[0])
         self.relu = nn.LeakyReLU()
         self.preprocess_level = nn.Sequential(self.conv1, self.bn1, self.relu)
 
         self.layers = {}
+        in_planes = self.ch[0]
+
         for i in range(self.res_lev):
             if i == 0:
-                self.layers['layer'+str(i)] = self._make_layer(block=BasicBlock, planes=self.ch[i], num_blocks=2, stride=1)
+                self.layers['layer'+ str(i)] = self._make_layer(BasicBlock, in_planes, self.ch[i],
+                                                                num_blocks=2, stride=1)
             else:
-                self.layers['layer' + str(i)] = self._make_layer(block=BasicBlock, planes=self.ch[i], num_blocks=2, stride=2)
+                self.layers['layer' + str(i)] = self._make_layer(BasicBlock, in_planes, self.ch[i],
+                                                                 num_blocks=2, stride=2)
+            in_planes = self.ch[i]
 
         # make resolution layers automatically depending on default/conf.ini
         self.resolution_levels = nn.ModuleList([self.layers['layer'+str(i)] for i in range(self.res_lev)])
 
-    def _make_layer(self, block, planes, num_blocks, stride):
-        strides = [stride] + [1] * (num_blocks - 1)
-        layers = []
-        for stride in strides:
-            layers.append(block(self.in_planes, planes, stride))
-            self.in_planes = planes * block.expansion
+    def _make_layer(self, block, in_planes, planes, num_blocks, stride):
+        layers = [block(in_planes, planes, stride)]
+        for i in range(num_blocks - 1):
+            layers.append(block(planes, planes, 1))
         return nn.Sequential(*layers)
 
     def forward(self, x):

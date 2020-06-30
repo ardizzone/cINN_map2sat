@@ -3,7 +3,7 @@ import sys
 import os
 import warnings
 
-usage = "Usage: main.py <train|test|both> <target directory>\n""The target directory must contain a config.ini file"
+usage = "Usage: main.py <train|test|both> <target directory>"
 
 assert len(sys.argv) == 3, usage
 
@@ -13,7 +13,7 @@ output_dir = sys.argv[2]
 conf_file = os.path.join(output_dir, 'conf.ini')
 
 assert mode in ['train', 'test', 'both'], usage
-assert os.path.isdir(output_dir), f'No such directory: "{output_dir}"\n' + usage
+assert os.path.isdir(output_dir), usage + f'\nNo such directory: "{output_dir}"'
 
 # initialize the options with the defaults, overwrite the ones specified.
 args = configparser.ConfigParser()
