@@ -3,6 +3,13 @@
 import torch.nn as nn
 import torch.nn.functional as F
 
+def build_entry_flow(args):
+    net = nn.Sequential(nn.Conv2d(3, 32, 1),
+                        nn.ReLU(),
+                        nn.Conv2d(32, 3, 1))
+    return net
+
+
 class BasicBlock(nn.Module):
     expansion = 1
 
@@ -26,7 +33,6 @@ class BasicBlock(nn.Module):
         out += self.shortcut(x)
         out = F.relu(out)
         return out
-
 
 class ResNet18(nn.Module):
     def __init__(self, args):

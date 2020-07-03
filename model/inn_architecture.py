@@ -4,8 +4,15 @@ import FrEIA.modules as Fm
 from all_in_one_block import AllInOneBlock
 from reversible_sequential_net import ReversibleSequential
 
+def _xavier_init(m, gain=1.):
+    if isinstance(m, nn.Conv2d):
+        nn.init.kaiming_uniform_(m.weight.data)
+    if isinstance(m, nn.BatchNorm2d):
+        m.weight.data.zero_().add_(gain)
+        m.bias.data.zero_()
+
 def build_inn(args):
-    data_dims       = eval(args['data']['rescale_to'])
+    data_dims       = eval(args['data']['crop_to'])
     data_channels   = eval(args['data']['base_channels'])
 
     cond_ch         = eval(args['model']['cond_net_channels'])
@@ -17,16 +24,24 @@ def build_inn(args):
     cinn_total_resolution_levels = len(cinn_c_blocks)
 
     def subnet_conv(ch_hidden):
-        return lambda ch_in, ch_out: nn.Sequential(
-            nn.Conv2d(ch_in, ch_hidden, 3, padding=1, bias=False),
-            nn.BatchNorm2d(ch_hidden),
-            nn.ReLU(),
 
-            nn.Conv2d(ch_hidden, ch_hidden, 3, padding=1, bias=False),
-            nn.BatchNorm2d(ch_hidden),
-            nn.ReLU(),
+        def f(ch_in, ch_out):
+            net = nn.Sequential(
+                nn.Conv2d(ch_in, ch_hidden, 3, padding=1, bias=False),
+                nn.BatchNorm2d(ch_hidden),
+                nn.ReLU(),
 
-            nn.Conv2d(ch_hidden, ch_out, 3, padding=1))
+                nn.Conv2d(ch_hidden, ch_hidden, 3, padding=1, bias=False),
+                nn.BatchNorm2d(ch_hidden),
+                nn.ReLU(),
+
+                nn.Conv2d(ch_hidden, ch_out, 3, padding=1))
+
+            net.apply(lambda m: _xavier_init(m, gain=1.)) #max(1., ch_hidden / 64.)**1.5))
+            return net
+
+        return f
+
 
     cond_shapes = [(cond_ch[i], data_dims//(2**i), data_dims//(2**i)) for i in range(cinn_tot_levels)]
 
