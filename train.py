@@ -30,16 +30,9 @@ def _check_gradients_per_block(inn):
 
 def train(args):
 
-    cinn = model.CINN(args)
-    cinn.train()
-    cinn.cuda()
-    n_gpus = eval(args['training']['parallel_GPUs'])
-    if n_gpus > 1:
-        cinn_parallel = nn.DataParallel(cinn, list(range(n_gpus)))
-    else:
-        cinn_parallel = cinn
-
-    dataset = data.MapToSatDataset(args)
+    ##########################
+    # Relevant config values #
+    ##########################
 
     log_interval         = 1 #print losses every epoch
     checkpoint_interval  = eval(args['checkpoints']['checkpoint_interval'])
@@ -49,37 +42,64 @@ def train(args):
     figures_overwrite    = eval(args['checkpoints']['figures_overwrite'])
     no_progress_bar      = not eval(args['checkpoints']['epoch_progress_bar'])
 
-    N_epochs = eval(args['training']['N_epochs'])
-    output_dir = args['checkpoints']['output_dir']
+    N_epochs             = eval(args['training']['N_epochs'])
+    output_dir           = args['checkpoints']['output_dir']
+    n_gpus               = eval(args['training']['parallel_GPUs'])
+    checkpoint_resume    = args['checkpoints']['resume_checkpoint']
 
-    checkpoints_dir = join(output_dir, 'checkpoints')
-    figures_dir = join(output_dir, 'figures')
+    checkpoints_dir      = join(output_dir, 'checkpoints')
+    figures_dir          = join(output_dir, 'figures')
 
     os.makedirs(checkpoints_dir, exist_ok=True)
     os.makedirs(figures_dir, exist_ok=True)
+
+    #######################################
+    # Construct and load network and data #
+    #######################################
+
+    cinn = model.CINN(args)
+    cinn.train()
+    cinn.cuda()
+
+    if checkpoint_resume:
+        cinn.load(checkpoint_resume)
+
+    if n_gpus > 1:
+        cinn_parallel = nn.DataParallel(cinn, list(range(n_gpus)))
+    else:
+        cinn_parallel = cinn
+
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(cinn.optimizer, gamma=0.1,
+                                 milestones=eval(args['training']['milestones_lr_decay']))
+
+    dataset = data.MapToSatDataset(args)
+    val_x = dataset.val_x.cuda()
+    val_y = dataset.val_y.cuda()
+
+    ####################
+    # Logging business #
+    ####################
 
     logfile = open(join(output_dir, 'losses.dat'), 'w')
 
     def log_write(string):
         logfile.write(string + '\n')
+        logfile.flush()
         print(string, flush=True)
-
 
     log_header = '{:>8s}{:>10s}{:>12s}{:>12s}'.format('Epoch', 'Time (m)', 'NLL train', 'NLL val')
     log_fmt    = '{:>8d}{:>10.1f}{:>12.5f}{:>12.5f}'
 
     log_write(log_header)
 
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(cinn.optimizer, gamma=0.1,
-                                 milestones=eval(args['training']['milestones_lr_decay']))
-
-    val_x = dataset.val_x.cuda()
-    val_y = dataset.val_y.cuda()
-
     if figures_interval > 0:
         checkpoint_figures(join(figures_dir, 'init.pdf'), cinn, dataset, args)
 
     t_start = time.time()
+
+    ####################
+    #  V  Training  V  #
+    ####################
 
     for epoch in range(N_epochs):
         progress_bar = tqdm(total=dataset.epoch_length, ascii=True, ncols=100, leave=False,
@@ -99,7 +119,7 @@ def train(args):
             cinn.optimizer.zero_grad()
             progress_bar.update()
 
-        # end of epoch:
+        # from here: end of epoch
         scheduler.step()
         progress_bar.close()
 

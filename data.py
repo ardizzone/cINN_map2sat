@@ -154,6 +154,13 @@ class MapToSatDataset:
                                 TensorNoTranspose(),
                                 T.Normalize(mu_img + mu_map, std_img + std_map)
                                ])
+
+        self.transf_hd = T.Compose([
+                                RandomZoomCropRotate(512, deterministic=True),
+                                TensorNoTranspose(),
+                                T.Normalize(mu_img + mu_map, std_img + std_map)
+                               ])
+
         if reverse:
             subfolders = ['B', 'A']
         else:
@@ -169,6 +176,7 @@ class MapToSatDataset:
 
         self.train_data = MatchingFolderDataset(self.train_files, self.transf)
         self.test_data  = MatchingFolderDataset(self.test_files, self.transf_test)
+        self.hd_data    = MatchingFolderDataset(self.test_files, self.transf_hd)
         self.val_data   = MatchingFolderDataset(self.val_files, self.transf_test)
 
         val_imgs = [self.val_data[i] for i in range(len(self.val_data))]
@@ -179,6 +187,8 @@ class MapToSatDataset:
                                    num_workers=14, pin_memory=True, drop_last=True)
         self.test_loader   = DataLoader(self.test_data,  batch_size=batchsize, shuffle=False,
                                    num_workers=4, pin_memory=False, drop_last=False)
+        self.hd_loader     = DataLoader(self.hd_data,    batch_size=1, shuffle=False,
+                                   num_workers=1, pin_memory=False, drop_last=False)
 
         self.epoch_length = len(self.train_loader)
 

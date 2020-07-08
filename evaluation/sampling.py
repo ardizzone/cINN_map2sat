@@ -2,23 +2,32 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
+def sample(model, dataset, args,
+           temperature       = None,
+           N_examples        = 6,
+           N_samples_per_y   = 3,
+           test_data         = False,
+           test_time_bn      = False,
+           big_size          = False,
+           save_separate_ims = None):
 
-def sample(model, dataset, args, test_data=False):
-    N_examples          = 6
-    N_samples_per_image = 3
-    base_figsize        = 2.5
-    #sample_resolution  = 512
-    sample_resolution   = eval(args['data']['crop_to'])
-    temp                = eval(args['testing']['temp'])
+    base_figsize = 2.5
+    temp = temperature
+
+    if temp is None:
+        temp = eval(args['testing']['temp'])
+
+    if big_size:
+        sample_resolution = 512
+    else:
+        sample_resolution = eval(args['data']['crop_to'])
 
     resolution_stages = len(eval(args['model']['inn_coupling_blocks']))
     latent_resolution = sample_resolution // (2 ** (resolution_stages - 1))
-    latent_channels = 3 * (4 ** (resolution_stages - 1))
+    latent_channels   = 3 * (4 ** (resolution_stages - 1))
 
     fig_W = N_samples_per_image + 2
     fig_H = N_examples
-
-    fig_counter = 1
 
     plt.figure(figsize=(base_figsize * fig_W,
                         base_figsize * fig_H))
@@ -30,12 +39,15 @@ def sample(model, dataset, args, test_data=False):
         plt.yticks([])
         return counter + 1
 
-    if test_data:
+    if big_size:
+        data_loader = dataset.hd_loader
+    elif test_data:
         data_loader = dataset.test_loader
     else:
         data_loader = [(dataset.val_x, dataset.val_y)]
 
     model.eval()
+    fig_counter = 1
 
     for x, y in data_loader:
 
