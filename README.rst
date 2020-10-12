@@ -1,13 +1,12 @@
 How to run
 -------------
 
-* Make an output folder
+* Make an output folder:
+``mkdir /data/experiments/experiment_xyz``
 
-`mkdir /data/experiments/experiment_xyz`
-
-* Put a `config.ini` in that folder. Set all the options that differ from
-the values given in `default.ini` (the rest will be taken from default.ini automatically).
-For example in `config.ini` could contain the following:
+* Put a ``config.ini`` in that folder. Set all the options that differ from
+the values given in ``default.ini`` (the rest will be taken from default.ini automatically).
+For example in ``config.ini`` could contain the following:
 
 .. code:: ini
 
