@@ -12,8 +12,11 @@ class CINN(nn.Module):
         self.nice_entry = build_entry_flow(args)
 
         self.trainable_params = (list(self.nice_entry.parameters())
-                               + list(self.inn.parameters())
-                               + list(self.cond_net.parameters()))
+                               + list(self.inn.parameters()))
+        self.fixed_cond_net = eval(args['training']['fixed_cond_net'])
+
+        if not self.fixed_cond_net:
+            self.trainable_params += list(self.cond_net.parameters())
 
         optim = args['training']['optimizer']
         lr    = eval(args['training']['lr'])
@@ -30,7 +33,7 @@ class CINN(nn.Module):
         return self.nll(x, y)
 
     def nll(self, x, y):
-        conditions = self.cond_net(y)
+        conditions = self.features(y)
         t0 = self.nice_entry(y)
 
         x = x - t0
@@ -42,7 +45,7 @@ class CINN(nn.Module):
         return neg_log_pz - torch.mean(jac) / ndim
 
     def z(self, x, y):
-        conditions = self.cond_net(y)
+        conditions = self.features(y)
         t0 = self.nice_entry(y)
 
         x = x - t0
@@ -50,8 +53,15 @@ class CINN(nn.Module):
 
         return z
 
+    def features(self, y):
+        if self.fixed_cond_net:
+            with torch.no_grad():
+                return self.cond_net(y)
+        else:
+            return self.cond_net(y)
+
     def generate(self, z, y):
-        conditions = self.cond_net(y)
+        conditions = self.features(y)
         t0 = self.nice_entry(y)
 
         x, j = self.inn(z, c=conditions, rev=True)
@@ -78,3 +88,7 @@ class CINN(nn.Module):
             self.optimizer.load_state_dict(data_dict['optim'])
         except KeyError:
             pass
+
+    def load_cond_net(self, fname):
+        data_dict = torch.load(fname)
+        self.cond_net.load_state_dict(data_dict['cond_net'])

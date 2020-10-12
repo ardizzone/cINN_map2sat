@@ -46,6 +46,7 @@ def train(args):
     output_dir           = args['checkpoints']['output_dir']
     n_gpus               = eval(args['training']['parallel_GPUs'])
     checkpoint_resume    = args['checkpoints']['resume_checkpoint']
+    cond_net_resume      = args['checkpoints']['resume_cond_net']
 
     checkpoints_dir      = join(output_dir, 'checkpoints')
     figures_dir          = join(output_dir, 'figures')
@@ -64,6 +65,9 @@ def train(args):
     if checkpoint_resume:
         cinn.load(checkpoint_resume)
 
+    if cond_net_resume:
+        cinn.load_cond_net(cond_net_resume)
+
     if n_gpus > 1:
         cinn_parallel = nn.DataParallel(cinn, list(range(n_gpus)))
     else:
@@ -72,9 +76,28 @@ def train(args):
     scheduler = torch.optim.lr_scheduler.MultiStepLR(cinn.optimizer, gamma=0.1,
                                  milestones=eval(args['training']['milestones_lr_decay']))
 
-    dataset = data.MapToSatDataset(args)
+    dataset = data.dataset(args)
     val_x = dataset.val_x.cuda()
     val_y = dataset.val_y.cuda()
+
+    x_std, y_std = [], []
+    x_mean, y_mean = [], []
+
+    with torch.no_grad():
+        for x, y in tqdm(dataset.train_loader):
+            x_std.append(torch.std(x, dim=(0,2,3)).numpy())
+            y_std.append(torch.std(y, dim=(0,2,3)).numpy())
+            x_mean.append(torch.mean(x, dim=(0,2,3)).numpy())
+            y_mean.append(torch.mean(y, dim=(0,2,3)).numpy())
+            break
+
+    print(np.mean(x_std, axis=0))
+    print(np.mean(x_mean, axis=0))
+
+    print(np.mean(y_std, axis=0))
+    print(np.mean(y_mean, axis=0))
+
+
 
     ####################
     # Logging business #
@@ -103,17 +126,18 @@ def train(args):
 
     for epoch in range(N_epochs):
         progress_bar = tqdm(total=dataset.epoch_length, ascii=True, ncols=100, leave=False,
-                            disable=no_progress_bar)
+                            disable=True)#no_progress_bar)
 
         loss_per_batch = []
 
-        for x, y in dataset.train_loader:
+        for i, (x, y) in enumerate(dataset.train_loader):
             x, y = x.cuda(), y.cuda()
 
             nll = cinn_parallel(x, y).mean()
             nll.backward()
             # _check_gradients_per_block(cinn.inn)
             loss_per_batch.append(nll.item())
+            print('{:03d}/445  {:.6f}'.format(i, loss_per_batch[-1]), end='\r')
 
             cinn.optimizer.step()
             cinn.optimizer.zero_grad()

@@ -32,7 +32,7 @@ def _test_loss(cinn, dataset, args, test_data=True):
     return tot_loss / count
 
 
-def _average_batch_norm(cinn, dataset, args):
+def _average_batch_norm(cinn, dataset, args, inverse=False, tot_iterations=10_000):
 
     cinn.train()
     bn_layers = []
@@ -60,17 +60,28 @@ def _average_batch_norm(cinn, dataset, args):
     assert instance_count > 0, "No batch norm layers found. Is the model constructed differently?"
     print('INSTANCES', instance_count)
 
-    tot_iterations = 10000
     it = 0
     progress = tqdm(total=tot_iterations, ascii=True, ncols=100)
+
+    resolution_stages = len(eval(args['model']['inn_coupling_blocks']))
+    width_z = eval(args['data']['crop_to']) // (2 ** (resolution_stages - 1))
+    ch_z = 3 * (4 ** (resolution_stages - 1))
 
     with torch.no_grad():
         while it <= tot_iterations:
             for x, y in dataset.train_loader:
-                x, y = x.cuda(), y.cuda()
-                nll = cinn.nll(x, y)
-                progress.update()
 
+                if inverse:
+                    y = y.cuda()
+                    z = torch.cuda.FloatTensor(y.shape[0], ch_z, width_z, width_z)
+                    z.normal_(mean=0., std=1.0)
+                    x_gen = cinn.generate(z, y)
+
+                else:
+                    x, y = x.cuda(), y.cuda()
+                    nll = cinn.nll(x, y)
+
+                progress.update()
                 if it >= tot_iterations:
                     progress.close()
                     cinn.eval()
@@ -84,43 +95,70 @@ def test(args):
     figures_output_dir = join(out_dir, 'testing')
     os.makedirs(figures_output_dir, exist_ok=True)
 
+    batch_norm_mode = args['testing']['average_batch_norm']
+
     print('. Loading the dataset')
-    dataset = data.MapToSatDataset(args)
+    dataset = data.dataset(args)
 
     print('. Constructing the model')
     cinn = model.CINN(args)
     cinn.cuda()
 
     print('. Loading the checkpoint')
-    try:
-        cinn.load(join(out_dir, 'checkpoint_end_avg.pt'))
-    except FileNotFoundError:
-        print('. Averaging BatchNorm layers')
+    if batch_norm_mode == 'NONE':
         cinn.load(join(out_dir, 'checkpoint_end.pt'))
-        _average_batch_norm(cinn, dataset, args)
-        cinn.save(join(out_dir, 'checkpoint_end_avg.pt'))
-        pass
+    elif batch_norm_mode == 'FORWARD':
+        try:
+            cinn.load(join(out_dir, 'checkpoint_end_avg.pt'))
+        except FileNotFoundError:
+            print('. Averaging BatchNorm layers')
+            cinn.load(join(out_dir, 'checkpoint_end.pt'))
+            _average_batch_norm(cinn, dataset, args, tot_iterations=500)
+            cinn.save(join(out_dir, 'checkpoint_end_avg.pt'))
+    elif batch_norm_mode == 'INVERSE':
+        try:
+            cinn.load(join(out_dir, 'checkpoint_end_avg_inv.pt'))
+        except FileNotFoundError:
+            print('. Averaging BatchNorm layers')
+            cinn.load(join(out_dir, 'checkpoint_end.pt'))
+            _average_batch_norm(cinn, dataset, args, inverse=True)
+            cinn.save(join(out_dir, 'checkpoint_end_avg_inv.pt'))
+    else:
+        raise ValueError('average_batch_norm ini value must be FORWARD, INVERSE or NONE')
 
     cinn.eval()
 
-    print('. Computing test loss')
-    loss = _test_loss(cinn, dataset, args, test_data=True)
-    print('TEST LOSS', loss)
-    with open(join(figures_output_dir, 'test_loss'), 'w') as f:
-        f.write(str(loss))
+    do_test_loss = False
+    do_samples   = False
+    do_features  = True
 
-    print('. Generating samples')
-    os.makedirs(join(figures_output_dir, 'samples'), exist_ok=True)
-    for t in np.linspace(0.7, 1.2, num=20):
-        sampling.sample(cinn, dataset, args, temperature=t, test_data=True, big_size=True)
-        plt.savefig(join(figures_output_dir, 'samples', 'temp_{:.3f}.pdf'.format(t)))
-        plt.close()
+    if do_test_loss:
+        print('. Computing test loss')
+        loss = _test_loss(cinn, dataset, args, test_data=True)
+        print('TEST LOSS', loss)
+        with open(join(figures_output_dir, 'test_loss'), 'w') as f:
+            f.write(str(loss))
 
-    print('. Visualizing feature pyramid')
-    from .features_pca import features_pca
-    features_pca(cinn, dataset, args, join(figures_output_dir, 'c_pca'))
+    if do_samples:
+        print('. Generating samples')
+        os.makedirs(join(figures_output_dir, 'samples'), exist_ok=True)
+        #for t in [0.7, 0.9, 1.0]:
+        for t in [1.0]:
+            sampling.sample(cinn, dataset, args,
+                            temperature       = t,
+                            test_data         = False,
+                            big_size          = False,
+                            N_examples        = 353,
+                            N_samples_per_y   = 24,
+                            save_separate_ims = join(figures_output_dir, 'samples/val_{:.3f}'.format(t))
+                           )
+
+    if do_features:
+        print('. Visualizing feature pyramid')
+        from .features_pca import features_pca
+        features_pca(cinn, dataset, args, join(figures_output_dir, 'c_pca'))
 
 def checkpoint_figures(path, model, dataset, args, test_data=False):
-    sampling.sample(model, dataset, args, test_data)
+    sampling.sample(model, dataset, args, test_data=test_data)
     plt.savefig(path)
     plt.close()
