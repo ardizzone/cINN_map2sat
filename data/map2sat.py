@@ -135,6 +135,8 @@ class MapToSatDataset:
         batchsize = eval(args['training']['batch_size'])
         base_folder = args['data']['data_root_folder']
 
+        self.max_size = 512
+
         if reverse:
             mu_img, mu_map = mu_map, mu_img
             std_img, std_map = std_map, std_img
